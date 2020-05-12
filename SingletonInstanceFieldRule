@@ -31,6 +31,7 @@ import org.sonar.plugins.java.api.tree.Tree.Kind;
 
 import javax.annotation.Nullable;
 
+
 @Rule(key = "SingletonInstanceField",
         name="Check mutable instances in Singleton class",
         description = "Check mutable instances in Singleton class",
@@ -148,7 +149,7 @@ public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
         String[] superclassList = superclassInput.split(",");
         System.out.println("============================super class name: " + fullSuperclassName);
         for (String superclass: superclassList) {
-            if (fullSuperclassName.equals(superclass)) {
+            if (fullSuperclassName.equals(superclass.trim())) {
                 return true;
             }
         }
@@ -164,7 +165,7 @@ public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
             String fullImplementName = getFullSuperclassName(importList, implementName);
             if (fullImplementName != null) {
                 for (String superclass: superclassList) {
-                    if (fullImplementName.equals(superclass)) {
+                    if (fullImplementName.equals(superclass.trim())) {
                         return true;
                     }
                 }
