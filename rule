@@ -1,0 +1,229 @@
+/*
+ * SonarQube Java
+ * Copyright (C) 2012-2020 SonarSource SA
+ * mailto:info AT sonarsource DOT com
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+package org.sonar.samples.java.checks;
+
+import java.util.*;
+
+import org.sonar.check.Priority;
+import org.sonar.check.Rule;
+import org.sonar.check.RuleProperty;
+import org.sonar.plugins.java.api.IssuableSubscriptionVisitor;
+import org.sonar.plugins.java.api.JavaFileScannerContext;
+import org.sonar.plugins.java.api.tree.*;
+import org.sonar.plugins.java.api.tree.Tree.Kind;
+
+import javax.annotation.Nullable;
+
+@Rule(key = "SingletonMutableInstance",
+        name="Check mutable instances in Singleton class",
+        description = "Check mutable instances in Singleton class",
+        priority = Priority.CRITICAL,
+        tags = {"bug"})
+public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
+
+    private List<VariableTree> issuableVariables = new ArrayList<>();
+    private List<VariableTree> excludedVariables = new ArrayList<>();
+
+    private int constructorNum = 0;
+    private boolean isAllConstructorPrivate = true;
+    private List<String> importList = new ArrayList<>();
+    private String superclassName = null;
+    private boolean isSubclassOfSingleton;
+    private List<String> implementNameList = new ArrayList<>();
+    private boolean isImplementOfSingleton;
+
+    @RuleProperty(
+            description = "Please enter the superclass you want to check, if over one superclass, please separated by \",\":")
+    protected String superclassInput;
+
+    @Override
+    public List<Kind> nodesToVisit() {
+        return Arrays.asList(Tree.Kind.VARIABLE, Kind.CLASS, Kind.IMPORT);
+    }
+
+    @Override
+    public void leaveFile(JavaFileScannerContext context) {
+        reportIssuesOnVariable();
+    }
+
+    @Override
+    public void visitNode(Tree tree) {
+        if (!hasSemantic()) {
+            return;
+        }
+
+        if (tree.is(Kind.CLASS)) {
+            if (isConstructorNonPrivate((ClassTree) tree)) {
+                isAllConstructorPrivate = false;
+            }
+            if (((ClassTree) tree).superClass() != null) {
+                superclassName =  ((ClassTree) tree).superClass().symbolType().name();
+            }
+            if (((ClassTree) tree).superInterfaces() != null) {
+                ListTree<TypeTree> typeTrees = ((ClassTree) tree).superInterfaces();
+                for (TypeTree typeTree : typeTrees) {
+                    implementNameList.add(typeTree.symbolType().name());
+                }
+            }
+        } else if (tree.is(Kind.IMPORT)) {
+            ImportTree importTree = (ImportTree) tree;
+            String importName = concatenate((ExpressionTree) importTree.qualifiedIdentifier());
+            importList.add(importName);
+        } else if (tree.is(Kind.VARIABLE) && tree.parent().is(Kind.CLASS)) {
+            VariableTree variable = (VariableTree) tree;
+            if (!isExcluded(variable)) {
+                issuableVariables.add(variable);
+            }
+        }
+
+    }
+
+    private void reportIssuesOnVariable() {
+        if (superclassName != null) {
+            isSubclassOfSingleton = isSubclassOfSingleton(getFullSuperclassName(importList, superclassName));
+        } else {
+            isSubclassOfSingleton = false;
+        }
+
+        if (implementNameList != null && implementNameList.size() > 0) {
+            isImplementOfSingleton = isImplementOfSingleton(importList, implementNameList);
+        } else {
+            isImplementOfSingleton = false;
+        }
+
+        if (/*(isAllConstructorPrivate && constructorNum > 0) || */isSubclassOfSingleton || isImplementOfSingleton) {
+            issuableVariables.removeAll(excludedVariables);
+            System.out.println("--------------------num of issue is: " + issuableVariables.size());
+            for (VariableTree variable : issuableVariables) {
+                reportIssue(variable.simpleName(), "As this class is a singleton class, please make sure the field is stateless, otherwise remove it or make it \"final\"");
+            }
+        }
+        clear();
+    }
+
+    private void clear() {
+        issuableVariables.clear();
+        excludedVariables.clear();
+        constructorNum = 0;
+        isAllConstructorPrivate = true;
+        superclassName = null;
+        importList.clear();
+        implementNameList.clear();
+    }
+
+    private boolean isExcluded(VariableTree variable) {
+        return isFinal(variable);
+    }
+
+    private String getFullSuperclassName(List<String> importList, String superclassName) {
+        for (String importName: importList) {
+            if (importName.contains(superclassName)) {
+                return importName;
+            }
+        }
+        return null;
+    }
+
+    private boolean isSubclassOfSingleton(String fullSuperclassName) {
+        if (fullSuperclassName == null || superclassInput == null || superclassInput.trim().equals("")) {
+            return false;
+        }
+        String[] superclassList = superclassInput.split(",");
+        System.out.println("============================super class name: " + fullSuperclassName);
+        for (String superclass: superclassList) {
+            if (fullSuperclassName.equals(superclass)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isImplementOfSingleton(List<String> importList, List<String> implementNameList) {
+        if (superclassInput == null || superclassInput.trim().equals("")) {
+            return false;
+        }
+        String[] superclassList = superclassInput.split(",");
+        for (String implementName : implementNameList) {
+            String fullImplementName = getFullSuperclassName(importList, implementName);
+            if (fullImplementName != null) {
+                for (String superclass: superclassList) {
+                    if (fullImplementName.equals(superclass)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isFinal(VariableTree variable) {
+        ModifiersTree modifiers = variable.modifiers();
+        return hasModifier(modifiers, Modifier.FINAL) && variable.initializer() != null;
+    }
+
+    private boolean hasModifier(ModifiersTree modifiers, Modifier expectedModifier) {
+        return findModifier(modifiers, expectedModifier).isPresent();
+    }
+
+    private Optional<ModifierKeywordTree> findModifier(ModifiersTree modifiersTree, Modifier expectedModifier) {
+        return modifiersTree.modifiers().stream().filter((modifierKeywordTree) -> {
+            return modifierKeywordTree.modifier() == expectedModifier;
+        }).findAny();
+    }
+
+    private boolean isConstructorNonPrivate(ClassTree tree) {
+        IdentifierTree simpleName = tree.simpleName();
+        if (simpleName!=null && !hasModifier(tree.modifiers(), Modifier.ABSTRACT)) {
+            for (Tree member: tree.members()) {
+                if (member.is(Kind.CONSTRUCTOR)) {
+                    constructorNum++;
+                    if (!hasModifier(((MethodTree) member).modifiers(), Modifier.PRIVATE))
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String concatenate(@Nullable ExpressionTree tree) {
+        if(tree == null) {
+            return "";
+        }
+        Deque<String> pieces = new LinkedList<>();
+        ExpressionTree expr = tree;
+        while (expr.is(Tree.Kind.MEMBER_SELECT)) {
+            MemberSelectExpressionTree mse = (MemberSelectExpressionTree) expr;
+            pieces.push(mse.identifier().name());
+            pieces.push(".");
+            expr = mse.expression();
+        }
+        if (expr.is(Tree.Kind.IDENTIFIER)) {
+            IdentifierTree idt = (IdentifierTree) expr;
+            pieces.push(idt.name());
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (String piece: pieces) {
+            sb.append(piece);
+        }
+        return sb.toString();
+    }
+
+}
