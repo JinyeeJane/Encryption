@@ -31,10 +31,10 @@ import org.sonar.plugins.java.api.tree.Tree.Kind;
 
 import javax.annotation.Nullable;
 
-@Rule(key = "SingletonMutableInstance",
+@Rule(key = "SingletonInstanceField",
         name="Check mutable instances in Singleton class",
         description = "Check mutable instances in Singleton class",
-        priority = Priority.CRITICAL,
+        priority = Priority.MINOR,
         tags = {"bug"})
 public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
 
@@ -50,7 +50,7 @@ public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
     private boolean isImplementOfSingleton;
 
     @RuleProperty(
-            description = "Please enter the superclass you want to check, if over one superclass, please separated by \",\":")
+            description = "Please enter the full name of superclass you want to check, e.g. org.apache.struts.action.Action, if over one superclass, please separated by \",\":")
     protected String superclassInput;
 
     @Override
