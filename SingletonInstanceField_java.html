@@ -1,0 +1,41 @@
+<p>This rule is to check fields in singleton controllers. For situation of multiply threads, only stateless fields can make sure it is synchronized, otherwise it is better to remove these fields or make them 'final'</p>
+<h2>Noncompliant Code Example</h2>
+<pre>
+import org.apache.struts.action.Action;
+
+public class HelloController extends Action{
+
+    public static int a; // Noncompliant
+
+    public int b = 1; // Noncompliant
+
+    public final static int c = 1;
+
+    public final int d; // Noncompliant
+
+    private HelloController(int d) {
+        this.d = d;
+    }
+
+    private HelloController(int d, int a) {
+        this.d = d;
+        this.a = a;
+    }
+
+}
+
+</pre>
+<h2>Compliant Solution</h2>
+<pre>
+import org.apache.struts.action.Action;
+
+public class HelloController extends Action{
+
+    public final static int c = 1; // Compliant
+
+    private HelloController() {
+    }
+
+
+}
+</pre>
