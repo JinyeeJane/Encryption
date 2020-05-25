@@ -50,6 +50,8 @@ public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
     private List<String> implementNameList = new ArrayList<>();
     private boolean isImplementOfSingleton;
 
+    private String[] annotationNameInput = {"SuppressWarnings", "Context"};
+
     @RuleProperty(
             description = "Please enter the full name of superclass you want to check, e.g. org.apache.struts.action.Action, if over one superclass, please separated by \",\":")
     protected String superclassInput;
@@ -119,6 +121,23 @@ public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
         clear();
     }
 
+    private boolean isAnnotationExcluded(VariableTree tree) {
+
+        List<AnnotationTree> annotations = tree.modifiers().annotations();
+        for (AnnotationTree annotationTree : annotations) {
+            if (annotationTree.annotationType().is(Tree.Kind.IDENTIFIER)) {
+                IdentifierTree idf = (IdentifierTree) annotationTree.annotationType();
+                System.out.println(idf.name());
+                for (String annotationName: annotationNameInput) {
+                    if (idf.name().equals(annotationName)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private void clear() {
         issuableVariables.clear();
         excludedVariables.clear();
@@ -130,7 +149,7 @@ public class SingletonInstanceFieldRule extends IssuableSubscriptionVisitor {
     }
 
     private boolean isExcluded(VariableTree variable) {
-        return isFinal(variable);
+        return isFinal(variable) || isAnnotationExcluded(variable);
     }
 
     private String getFullSuperclassName(List<String> importList, String superclassName) {
